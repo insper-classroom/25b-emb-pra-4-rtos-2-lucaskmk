@@ -11,6 +11,18 @@
 #include "pins.h"
 #include "ssd1306.h" 
 
+// --- Definições de Pinos (Corrigido RULE 2_2 - implementacao em .c) ---
+const int BTN_PIN_R = 4;
+const int BTN_PIN_G = 5;
+const int BTN_PIN_B = 6;
+const int LED_PIN_R = 7;
+const int LED_PIN_G = 8;
+const int LED_PIN_B = 9;
+const int HCSR04_PIN_TRIG = 10;
+const int HCSR04_PIN_ECHO = 11;
+// ----------------------------------------------------------------------
+
+
 #define SOUND_SPEED_CM_US 0.0343f
 #define MAX_ECHO_TIME_US 25000 
 #define TIMEOUT_MS us_to_ms(MAX_ECHO_TIME_US + 5000)
@@ -22,6 +34,7 @@ void oled_display_init(void);
 void hcsr04_init(void);
 void led_rgb_init(void);
 void ssd1306_draw_filled_rectangle(ssd1306_t *p, int x1, int y1, int x2, int y2);
+void hcsr04_trigger_pulse(void);
 
 void trigger_task(void *p);
 void echo_task(void *p);
@@ -31,8 +44,10 @@ SemaphoreHandle_t xSemaphoreTrigger;
 QueueHandle_t xQueueTime;          
 QueueHandle_t xQueueDistance;      
 
-static uint64_t start_time_us = 0;
-static bool rising_edge_received = false;
+// --- Corrigido RULE 1_1 & 4_4: 'static volatile' para acesso pela ISR ---
+static volatile uint64_t start_time_us = 0;
+static volatile bool rising_edge_received = false;
+// -----------------------------------------------------------------------
 
 void ssd1306_draw_filled_rectangle(ssd1306_t *p, int x1, int y1, int x2, int y2) {
     if (x1 > x2) { int temp = x1; x1 = x2; x2 = temp; }
@@ -82,6 +97,14 @@ void hcsr04_init(void) {
                                        true, &pin_callback);
 }
 
+// --- Corrigido RULE 4_3: Encapsulamento de sleep_us para trigger de 10us ---
+void hcsr04_trigger_pulse(void) {
+    gpio_put(HCSR04_PIN_TRIG, 1);
+    sleep_us(10);
+    gpio_put(HCSR04_PIN_TRIG, 0);
+}
+// --------------------------------------------------------------------------
+
 void pin_callback(uint gpio, uint32_t events) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
@@ -111,9 +134,7 @@ void trigger_task(void *p) {
     xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
-        gpio_put(HCSR04_PIN_TRIG, 1);
-        sleep_us(10);
-        gpio_put(HCSR04_PIN_TRIG, 0);
+        hcsr04_trigger_pulse();
 
         xSemaphoreGive(xSemaphoreTrigger);
 
