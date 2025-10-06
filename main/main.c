@@ -156,7 +156,6 @@ void echo_task(void *p) {
 
 void oled_task(void *p) {
     float distance_cm = -1.0f; 
-    bool sensor_fail = true;
     char buffer[32];
 
     hcsr04_init();
@@ -166,39 +165,48 @@ void oled_task(void *p) {
     while (1) {
         if (xSemaphoreTake(xSemaphoreTrigger, portMAX_DELAY)) {
 
+            // Variável de status local para o loop, substitui sensor_fail
+            bool measurement_valid = false;
+
             if (xQueueReceive(xQueueDistance, &distance_cm, pdMS_TO_TICKS(50))) {
-                sensor_fail = false;
+                measurement_valid = true;
 
                 if (distance_cm > 400.0f) {
                     distance_cm = 400.0f;
                 }
 
             } else {
-                sensor_fail = true;
                 distance_cm = -1.0f;
             }
 
+            // --- Lógica do LED RGB ---
             gpio_put(LED_PIN_R, 1); 
             gpio_put(LED_PIN_G, 1);
             gpio_put(LED_PIN_B, 1);
 
-            if (sensor_fail) {
+            if (!measurement_valid) {
+                // Vermelho: Falha/Timeout
                 gpio_put(LED_PIN_R, 0); 
             } else if (distance_cm <= 100.0f) {
+                // Verde: Perto
                 gpio_put(LED_PIN_G, 0); 
             } else {
+                // Amarelo: Longe
                 gpio_put(LED_PIN_R, 0);
                 gpio_put(LED_PIN_G, 0); 
             }
 
+            // --- Lógica do Display OLED ---
             ssd1306_clear(&disp);
 
             ssd1306_draw_string(&disp, 0, 0, 1, "HC-SR04 Distancia");
 
-            if (sensor_fail) {
+            if (!measurement_valid) {
+                // Exibe falha
                 ssd1306_draw_string(&disp, 0, 16, 2, "FALHA SENSOR");
                 ssd1306_draw_string(&disp, 0, 32, 1, "------ cm");
             } else {
+                // Exibe o valor da distância
                 snprintf(buffer, sizeof(buffer), "%.1f cm", distance_cm);
                 ssd1306_draw_string(&disp, 0, 16, 2, buffer);
 
